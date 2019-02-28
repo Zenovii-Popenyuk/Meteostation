@@ -96,8 +96,8 @@ float pressure, temperature, humidity , total_BAR_tem = 0, total_BAR_press = 0;
 int DHT_temp = 0, DHT_press = 0, pressed = 0, last_pressed = 0, number_of_measurements = 0;								// variables for using all sensors
 int number_of_barometer = 150, last_read_time = 0, last_error_time = 0;
 int last_id = 0;
-uint8_t seconds=0, minutes = 0, hours = 0, day_of_week = 0, day_of_month = 0, month = 0, year = 0, sect[512], result;	// variables for using clock
-uint8_t information[3] = {0, 0, 0};
+uint8_t seconds=0, minutes = 0, hours = 0, day_of_week = 0, day_of_month = 0, month = 0, year = 0, sect[512], result, ip_first = 0, ip_second = 0, ip_third = 0, ip_fourth = 0;	// variables for using clock
+uint8_t information[4] = {0, 0, 0, 0};
 uint32_t byteswritten, bytesread;
 
 extern char USERPath[4]; /* logical drive path */
@@ -385,36 +385,43 @@ void HygrometerNOConnection(){
 }
 
 void CheckAvailableData(){
-	HAL_UART_Receive(&huart1, information, 3, 1);
+	HAL_UART_Receive(&huart1, information, 4, 1);
 	uint8_t id = information[0];
-	uint8_t value = information[1];
-	uint8_t CRF = information[2];
-	if (id <= 1){
-		pressed = value;
-		if (last_pressed != pressed){
-			  switch(pressed){
-				  case 0: fullpower(); break;
-				  case 1: lowpower(); break;
-				  case 2: poweroff(); break;
-			  }
-			  last_pressed = pressed;
-		}
-	}else{
-		if(id != last_id){
-			RTC_ReadData(&seconds, &minutes, &hours, &day_of_week, &day_of_month, &month, &year);
-			 if(value == CRF){
-				switch(id){
-					case 2: year = value; break;
-					case 3: month = value; break;
-					case 4: day_of_month = value; break;
-					case 5: hours = value; break;
-					case 6: minutes = value; break;
-					case 7: seconds = value; break;
-					case 8: day_of_week = value; break;
-				}
-			 }
-			 RTC_SetData(seconds, minutes, hours, day_of_week, day_of_month, month, year);
-			 last_id = id;
+	uint8_t CRF_id = information[1];
+	uint8_t value = information[2];
+	uint8_t CRF = information[3];
+	if(id == CRF_id){
+		if (id <= 1){
+			pressed = value;
+			if (last_pressed != pressed){
+				  switch(pressed){
+					  case 0: fullpower(); break;
+					  case 1: lowpower(); break;
+					  case 2: poweroff(); break;
+				  }
+				  last_pressed = pressed;
+			}
+		}else{
+			if(id != last_id){
+				RTC_ReadData(&seconds, &minutes, &hours, &day_of_week, &day_of_month, &month, &year);
+				 if(value == CRF){
+					switch(id){
+						case 2: year = value; break;
+						case 3: month = value; break;
+						case 4: day_of_month = value; break;
+						case 5: hours = value; break;
+						case 6: minutes = value; break;
+						case 7: seconds = value; break;
+						case 8: day_of_week = value; break;
+						case 9: ip_first = value; break;
+						case 10: ip_second = value; break;
+						case 11: ip_third = value; break;
+						case 12: ip_fourth = value; break;
+					}
+				 }
+				 RTC_SetData(seconds, minutes, hours, day_of_week, day_of_month, month, year);
+				 last_id = id;
+			}
 		}
 	}
 }
@@ -486,14 +493,27 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  int start_time = HAL_GetTick();
   while (1)
   {
 	  CheckAvailableData();
 
 	  /* Check if there time to read data from different sensors. */
 	  if(pressed != 2){
-		  if((HAL_GetTick() - last_read_time) > 1000){
-			  RTC_WriteData();
+		  if((HAL_GetTick() - start_time) > 10000){
+			  if((HAL_GetTick() - last_read_time) > 1000){
+				  RTC_WriteData();
+			  }
+		  }else{
+			  Array_Clear_first_row();
+			  LCD_SendInt(0, 0, ip_first, 10);
+			  LCD_SendString(0, 3, ".");
+			  LCD_SendInt(0, 4, ip_second, 10);
+			  LCD_SendString(0, 7, ".");
+			  LCD_SendInt(0, 8, ip_third, 10);
+			  LCD_SendString(0, 10, ".");
+			   LCD_SendInt(0, 11, ip_fourth, 10);
+			  LCD_Print();
 		  }
 		  if(ms_before_next_read(&hr11_1) >= 2000){
 			  /* Read data from hygrometer. */
