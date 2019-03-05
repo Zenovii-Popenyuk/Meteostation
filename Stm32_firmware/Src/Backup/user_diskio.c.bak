@@ -159,7 +159,7 @@ DRESULT USER_read (
   /* USER CODE BEGIN READ */
 	if(USE_SEMIHOSTING){
 		printf("User_read\n");
-		printf("sector: %lu; count: %d\n",sector, count);
+		printf("sector: %lu; count: %d\n", sector, count);
 	}
 	if (pdrv || !count) return RES_PARERR;
 	if (Stat & STA_NOINIT) return RES_NOTRDY;

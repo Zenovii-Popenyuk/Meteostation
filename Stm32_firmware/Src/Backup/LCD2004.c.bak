@@ -8,6 +8,8 @@
 #include "i2c.h"
 #include "gpio.h"
 #include "main.h"
+#include "stdio.h"
+#include "stdlib.h"
 
 #define PIN_RS    (1 << 0)																// Reset work of I2C display
 #define PIN_EN    (1 << 2)
@@ -248,7 +250,6 @@ void search_I2C_bus_without_semihosting(I2C_HandleTypeDef i2c_Variable){
 			 	 LCD_Print();
 		 	  }
 		 	}
-		 	printf("\r\n");
 }
 
 void LCD_PowerOn(){

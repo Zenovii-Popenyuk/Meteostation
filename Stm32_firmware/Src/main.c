@@ -84,7 +84,7 @@ volatile int USE_SEMIHOSTING = 0;																						// to use semihosting or 
 BMP280_HandleTypedef bmp280;																							// variable for bmp280
 
 FATFS SDFatFs;																											// variables for SD card
-FATFS *fs;
+FATFS *fatfs;
 FIL MyFile;
 FRESULT res;
 

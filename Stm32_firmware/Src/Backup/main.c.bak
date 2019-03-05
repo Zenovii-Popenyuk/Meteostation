@@ -84,7 +84,7 @@ volatile int USE_SEMIHOSTING = 0;																						// to use semihosting or 
 BMP280_HandleTypedef bmp280;																							// variable for bmp280
 
 FATFS SDFatFs;																											// variables for SD card
-FATFS *fs;
+FATFS *fatfs;
 FIL MyFile;
 FRESULT res;
 
@@ -95,8 +95,9 @@ float pressure, temperature, humidity , total_BAR_tem = 0, total_BAR_press = 0;
 
 int DHT_temp = 0, DHT_press = 0, pressed = 0, last_pressed = 0, number_of_measurements = 0;								// variables for using all sensors
 int number_of_barometer = 150, last_read_time = 0, last_error_time = 0;
-uint8_t seconds=0, minutes = 0, hours = 0, day_of_week = 0, day_of_month = 0, month = 0, year = 0, sect[512], result;	// variables for using clock
-uint8_t information[1] = {0};
+int last_id = 0;
+uint8_t seconds=0, minutes = 0, hours = 0, day_of_week = 0, day_of_month = 0, month = 0, year = 0, sect[512], result, ip_first = 0, ip_second = 0, ip_third = 0, ip_fourth = 0;	// variables for using clock
+uint8_t information[4] = {0, 0, 0, 0};
 uint32_t byteswritten, bytesread;
 
 extern char USERPath[4]; /* logical drive path */
@@ -158,7 +159,7 @@ void WriteLongFile(const char* sentence){
 			{
 			  Error_Handler();
 			}else{
-			  res=f_write(&MyFile, sentence, strlen(sentence), (void*)&byteswritten);
+			  res = f_write(&MyFile, sentence, strlen(sentence), (void*)&byteswritten);
 			  if((byteswritten==0)||(res!=FR_OK))
 			  {
 				Error_Handler();
@@ -197,7 +198,7 @@ void fullpower(){
 	    LCD_SendString(2, 0, "BMP280 initialization failed");
 	    LCD_Print();
 	}
-    if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+    if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 		sprintf(sentence, "FuLL POWER MODE enabled");
 		WriteLongFile(sentence);
     }
@@ -217,7 +218,7 @@ void lowpower(){
 		LCD_SendString(2, 0, "BMP280 initialization failed");
 		LCD_Print();
     }
-    if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+    if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 		sprintf(sentence, "LOW POWER MODE enabled");
 		WriteLongFile(sentence);
     }
@@ -236,7 +237,7 @@ void poweroff(){
 	    LCD_SendString(2, 0, "BMP280 initialization failed");
 	    LCD_Print();
 	}
-	if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+	if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 		sprintf(sentence, "Meteorological is powered off");
 		WriteLongFile(sentence);
 	}
@@ -251,6 +252,10 @@ void DHT_Error(char *str){
 
 void TransmitBarometerData(int temperatureG, int humidity, float pressure, float temperatureB){
 	/* Transmit all possible available data to I2C display, WIFI module and  SD card. To send data to WIFI module it cut data. */
+	void TransmitMiniData(int id, int value, int CRF){
+		uint8_t buffer[3] = {id, (uint8_t)value, (uint8_t)CRF};
+		HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
+	}
 	LCD_SendString(2, 0, "Pressure:");
 	LCD_SendFloat(2, 10, pressure);
 	LCD_SendString(3, 0, "Temperature:");
@@ -274,74 +279,25 @@ void TransmitBarometerData(int temperatureG, int humidity, float pressure, float
 	int after_coma = ((pressure - first_two * 10000 - second_two * 100 - third) * 100);
 	int first_temperature = temperatureB / 1;
 	int second_temperature = (first_temperature - temperatureB) * 100;
-	uint8_t buffer[3] = {0, (uint8_t)first_temp, (uint8_t)first_temp};
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 1;
-	buffer[1] = (uint8_t)second_temp;
-	buffer[2] = (uint8_t)second_temp;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 2;
-	buffer[1] = (uint8_t)first_hum;
-	buffer[2] = (uint8_t)first_hum;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 3;
-	buffer[1] = (uint8_t)second_hum;
-	buffer[2] = (uint8_t)second_hum;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 4;
-	buffer[1] = (uint8_t)first_two;
-	buffer[2] = (uint8_t)first_two;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 5;
-	buffer[1] = (uint8_t)second_two;
-	buffer[2] = (uint8_t)second_two;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 6;
-	buffer[1] = (uint8_t)third;
-	buffer[2] = (uint8_t)third;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 7;
-	buffer[1] = (uint8_t)after_coma;
-	buffer[2] = (uint8_t)after_coma;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 8;
-	buffer[1] = (uint8_t)first_temperature;
-	buffer[2] = (uint8_t)first_temperature;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 9;
-	buffer[1] = (uint8_t)second_temperature;
-	buffer[2] = (uint8_t)second_temperature;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 10;
-	buffer[1] = (uint8_t)seconds;
-	buffer[2] = (uint8_t)seconds;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 11;
-	buffer[1] = (uint8_t)minutes;
-	buffer[2] = (uint8_t)minutes;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 12;
-	buffer[1] = (uint8_t)hours;
-	buffer[2] = (uint8_t)hours;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 13;
-	buffer[1] = (uint8_t)day_of_week;
-	buffer[2] = (uint8_t)day_of_week;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 14;
-	buffer[1] = (uint8_t)day_of_month;
-	buffer[2] = (uint8_t)day_of_month;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 15;
-	buffer[1] = (uint8_t)month;
-	buffer[2] = (uint8_t)month;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
-	buffer[0] = 16;
-	buffer[1] = (uint8_t)year;
-	buffer[2] = (uint8_t)year;
-	HAL_UART_Transmit(&huart1, buffer, sizeof(buffer), HAL_MAX_DELAY);
+	TransmitMiniData(0, first_temperature, first_temperature);
+	TransmitMiniData(1, second_temp, second_temp);
+	TransmitMiniData(2, first_hum, first_hum);
+	TransmitMiniData(3, second_hum, second_hum);
+	TransmitMiniData(4, first_two, first_two);
+	TransmitMiniData(5, second_two, second_two);
+	TransmitMiniData(6, third, third);
+	TransmitMiniData(7, after_coma, after_coma);
+	TransmitMiniData(8, first_temperature, first_temperature);
+	TransmitMiniData(9, second_temperature, second_temperature);
+	TransmitMiniData(10, seconds, seconds);
+	TransmitMiniData(11, minutes, minutes);
+	TransmitMiniData(12, hours, hours);
+	TransmitMiniData(13, day_of_week, day_of_week);
+	TransmitMiniData(14, day_of_month, day_of_month);
+	TransmitMiniData(15, month, month);
+	TransmitMiniData(16, year, year);
 
-	if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+	if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 		sprintf(sentence, "\tBarometer readings:\n\t\tTemperature: %f C\n\t\tPressure: %f Pa\n", total_BAR_tem, total_BAR_press);
 		WriteLongFile(sentence);
 	}
@@ -357,7 +313,7 @@ void BMP_Error(BMP280_HandleTypedef* bmp280){
 	bmp280_init(bmp280, &bmp280->params);
 	LCD_Print();
 	if ((HAL_GetTick() - last_error_time) >= 1000){
-		if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+		if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 			sprintf(sentence, "\tWarning: No Barometer Connection!\n");
 			WriteLongFile(sentence);
 		}
@@ -391,7 +347,7 @@ void RTC_WriteData(){
 	last_read_time = HAL_GetTick();
 	LCD_PrintRTC(seconds, minutes, hours, day_of_week, day_of_month, month, year);
 	clear_sentence(sentence);
-	if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+	if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 		sprintf(sentence, "\tData: %d:%d:%d, %s, %d/%d/20%d\n", hours, minutes, seconds, Str_day_of_week(day_of_week), day_of_month, month, year);
 		WriteLongFile(sentence);
 	}
@@ -402,7 +358,7 @@ void WritetHygrometerData(){
 	DHT_temp = get_temperature_DHTxx(&hr11_1);
 	DHT_press = get_humidity_DHTxx(&hr11_1);
 	clear_sentence(sentence);
-	if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+	if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 		sprintf(sentence, "\tHygrometer readings:\n\t\tTemperature: %d C\n\t\tHumidity: %d %%\n", (int)DHT_temp/10, (int)DHT_press/10);
 		WriteLongFile(sentence);
 	}
@@ -414,7 +370,7 @@ void WritetHygrometerData(){
 
 void HygrometerCSError(){
 	DHT_Error("Key: Checksum ERROR");
-	if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+	if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 		sprintf(sentence, "\tWarning: Hygrometer Checksum ERROR!\n");
 		WriteLongFile(sentence);
 	}
@@ -422,24 +378,51 @@ void HygrometerCSError(){
 
 void HygrometerNOConnection(){
 	DHT_Error("Key: NO CONNECTION");
-	if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
+	if(disk_status(SDFatFs.drv) != STA_NOINIT && res == FR_OK){
 		sprintf(sentence, "\tWarning: Hygrometer NO CONNECTION!\n");
 		WriteLongFile(sentence);
 	}
 }
 
 void CheckAvailableData(){
-	HAL_UART_Receive_IT(&huart1, information, sizeof(information));
-	if(information[0] <= 2){
-	  pressed = information[0];
-	}
-	if (last_pressed != pressed){
-		  switch(pressed){
-			  case 0: fullpower(); break;
-			  case 1: lowpower(); break;
-			  case 2: poweroff(); break;
-		  }
-		  last_pressed = pressed;
+	HAL_UART_Receive(&huart1, information, 4, 1);
+	uint8_t id = information[0];
+	uint8_t CRF_id = information[1];
+	uint8_t value = information[2];
+	uint8_t CRF = information[3];
+	if(id == CRF_id){
+		if (id <= 1){
+			pressed = value;
+			if (last_pressed != pressed){
+				  switch(pressed){
+					  case 0: fullpower(); break;
+					  case 1: lowpower(); break;
+					  case 2: poweroff(); break;
+				  }
+				  last_pressed = pressed;
+			}
+		}else{
+			if(id != last_id){
+				RTC_ReadData(&seconds, &minutes, &hours, &day_of_week, &day_of_month, &month, &year);
+				 if(value == CRF){
+					switch(id){
+						case 2: year = value; break;
+						case 3: month = value; break;
+						case 4: day_of_month = value; break;
+						case 5: hours = value; break;
+						case 6: minutes = value; break;
+						case 7: seconds = value; break;
+						case 8: day_of_week = value; break;
+						case 9: ip_first = value; break;
+						case 10: ip_second = value; break;
+						case 11: ip_third = value; break;
+						case 12: ip_fourth = value; break;
+					}
+				 }
+				 RTC_SetData(seconds, minutes, hours, day_of_week, day_of_month, month, year);
+				 last_id = id;
+			}
+		}
 	}
 }
 /* USER CODE END 0 */
@@ -510,19 +493,27 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  int start_time = HAL_GetTick();
   while (1)
   {
 	  CheckAvailableData();
 
-	  /* Check state of SD card. */
-	  if(disk_status(SDFatFs.drv) != STA_NOINIT || res != FR_OK){
-		  disk_initialize(SDFatFs.drv);
-	  }
-
 	  /* Check if there time to read data from different sensors. */
 	  if(pressed != 2){
-		  if((HAL_GetTick() - last_read_time) > 1000){
-			  RTC_WriteData();
+		  if((HAL_GetTick() - start_time) > 10000){
+			  if((HAL_GetTick() - last_read_time) > 1000){
+				  RTC_WriteData();
+			  }
+		  }else{
+			  Array_Clear_first_row();
+			  LCD_SendInt(0, 0, ip_first, 10);
+			  LCD_SendString(0, 3, ".");
+			  LCD_SendInt(0, 4, ip_second, 10);
+			  LCD_SendString(0, 7, ".");
+			  LCD_SendInt(0, 8, ip_third, 10);
+			  LCD_SendString(0, 10, ".");
+			   LCD_SendInt(0, 11, ip_fourth, 10);
+			  LCD_Print();
 		  }
 		  if(ms_before_next_read(&hr11_1) >= 2000){
 			  /* Read data from hygrometer. */
@@ -560,7 +551,7 @@ int main(void)
 						number_of_measurements = 0;
 					}
 				}
-			}
+		    }
 	  }
   /* USER CODE END WHILE */
 
