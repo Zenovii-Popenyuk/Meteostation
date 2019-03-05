@@ -1,17 +1,23 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WiFiClientSecure.h>
-
+#include <time.h>
 
 ESP8266WebServer server(80); // 80 is the port number
 
-const char* ssid="Zabej";
+const char* ssid="NodeMCU";
 const char* password="11111111";
 
+int timezone = 2 * 3600;
+int dst = 0;
+
 String Website,XML,Javascript,temp1, temp2, humidity, pressure, time1;
-int data[10] = {1,1,1,1,1, 1, 1, 1, 1, 1};
-
-
+int send_data;
+int data[17] = {0};
+String Argument_Name, Clients_Response1, Clients_Response2;
+int year, month, day, hour, minute, second, dayOfWeek;
+int ip_first, ip_second, ip_third, ip_fourth;
+int current_time = 0;
 
 bool Start = false;
 void javascriptContent(){
@@ -22,17 +28,16 @@ void javascriptContent(){
     Javascript +="var mm;\n";
     Javascript +="var ss;\n";
     Javascript +="function myFunction() {\n";
-    Javascript +="hh = document.getElementById('date_hh').value;\n";
-    Javascript +="mm = document.getElementById('date_mm').value;\n";
-    Javascript +="ss = document.getElementById('date_ss').value;\n";
-    Javascript +="ss = document.getElementById('date_ss').value;\n";
+    Javascript +="hh = document.getElementById('date_hh').value\n";
+    Javascript +="mm = document.getElementById('date_mm').value\n";
+    Javascript +="ss = document.getElementById('date_ss').value\n";
     Javascript +="}\n";
     Javascript+="var dps = [{x: 0, y: 0}];\n";
 Javascript+="var tempData = [];\n";
 Javascript+="var hummData = [];\n";
 Javascript+="var pressData = [];\n";
 Javascript+="var temp2Data = [];\n";
-Javascript+="var temperature, humidity, pressure, temperature_bmp, bmp;\n";
+Javascript+="var temperature, humidity, pressure, temperature_bmp;\n";
 Javascript+="var chart = null;\n";
 Javascript+="var xVal = 0;\n";
 Javascript+="var yVal = 20;\n";
@@ -171,20 +176,80 @@ void WebsiteContent(){
     Website+="</div>\n";
     Website+="</div>\n";
     Website+="<div style='margin-top: 20px; margin-left: 43%;'><a href=\"fullpw\"><button>Full power</button></a><a href=\"lowpw\"><button>Low power</button></a><a href=\"pwoff\"><button>Power off</button></a></div>\n";
-    Website+="<div style='margin-top: 20px; margin-left: 43%;'><h1>Time</h1><div><input type='text' name='date_year' id='date_year' size=2 autofocus>year<input type='text' name='date_month' id='date_month' size=2 autofocus>month<input type='text' name='date_day' id='date_day' size=2 autofocus>day<input type='text' name='date_hh' id='date_hh' size=2 autofocus>hh<input type='text' name='date_mm' id='date_mm' size=2 autofocus>mm<input type='text' name='date_ss' id='date_ss' size=2 autofocus>ss\n</div>";
-//    Website+="<div id='chartContainer' style='height: 300px; width: 100%;'></div>\n";
-    Website+="<div><br><button onclick='myFunction()' id='save_button'>Save</button></div></div>\n";
+    Website+="<div style='margin-top: 20px; margin-left: 43%;'><h1>Time</h1>";
+    String IPaddress = WiFi.localIP().toString();
+    Website+="<form action='http://"+IPaddress+"' method='POST'><input type='text' name='date_year' id='date_year' size=2 autofocus>year<input type='text' name='date_month' id='date_month' size=2 autofocus>month<input type='text' name='date_day' id='date_day' size=2 autofocus>day<input type='text' name='date_dayOfWeek' id='date_dayOfWeek' size=2 autofocus>day of week<input type='text' name='date_hh' id='date_hh' size=2 autofocus>hh<input type='text' name='date_mm' id='date_mm' size=2 autofocus>mm<input type='text' name='date_ss' id='date_ss' size=2 autofocus>ss\n";
+    Website+="<input type='submit' value='Enter'>";
+    Website+="</form></div>";
+    Website+="<div>\n";
     Website+="<div id='chartContainer' style='height: 300px; width: 100%;'></div>\n";
 Website+="<script src='https://canvasjs.com/assets/script/canvasjs.min.js'></script>\n";
-Website+="<div>\n";
+Website+="<script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js'></script>\n";
+
     Website+="<button id='temp1' onclick='graphData(this.id)'>Temperature</button>\n";
     Website+="<button id='humm' onclick='graphData(this.id)'>Hummidity</button>\n";
     Website+="<button id='press' onclick='graphData(this.id)'>Pressure</button>\n";
-    Website+="<button id='temp2' onclick='graphData(this.id)'>Temperature BMP</button>\n";
+    Website+="<button id='temp2' onclick='graphData(this.id)'>Temperature BMP</button></div>\n";
     Website+="</body></html>\n";
     
     server.send(200,"text/html",Website);
-
+    if (server.args() > 0 ) { // Arguments were received
+    for ( uint8_t i = 0; i < server.args(); i++ ) {
+      if (server.arg(i) != "" && server.arg(i) != " "){
+        if (server.argName(i) == "date_year") {
+          year = server.arg(i).toInt();
+          if(year >= 0 && year < 100){
+              uint8_t buff[4] = {2, 2, (uint8_t)year, (uint8_t)year};
+              Serial.write(buff, sizeof(buff));
+            }
+        
+        }
+        if (server.argName(i) == "date_month") {
+          month = server.arg(i).toInt();
+          if(month >= 0 && month < 100){
+              uint8_t buff[4] = {3, 3, (uint8_t)month, (uint8_t)month};
+              Serial.write(buff, sizeof(buff));
+            }
+  
+        }
+        if (server.argName(i) == "date_day") {
+          day = server.arg(i).toInt();
+          if(day >= 0 && day <= 31){
+            uint8_t buff[4] = {4, 4, (uint8_t)day, (uint8_t)day};
+              Serial.write(buff, sizeof(buff));
+            }
+        }
+        if (server.argName(i) == "date_hh") {
+          hour = server.arg(i).toInt();
+          if(hour >= 0 && hour <= 24){
+              uint8_t buff[4] = {5, 5, (uint8_t)hour, (uint8_t)hour};
+              Serial.write(buff, sizeof(buff));
+           }
+        }
+        if (server.argName(i) == "date_mm") {
+          minute = server.arg(i).toInt();
+          if(minute >= 0 && minute <= 60){
+             uint8_t buff[4] = {6, 6, (uint8_t)minute, (uint8_t)minute};
+              Serial.write(buff, sizeof(buff));
+            }
+        }
+        if (server.argName(i) == "date_ss") {
+          second = server.arg(i).toInt();
+          if (second >= 0 && second <= 60){
+              uint8_t buff[4] = {7, 7, (uint8_t)second, (uint8_t)second};
+              Serial.write(buff, sizeof(buff));
+            }
+        }
+        if (server.argName(i) == "date_dayOfWeek") {
+          dayOfWeek = server.arg(i).toInt();
+          if(dayOfWeek >= 0 && dayOfWeek <= 7){
+              uint8_t buff[4] = {8, 8, (uint8_t)dayOfWeek, (uint8_t)dayOfWeek};
+              Serial.write(buff, sizeof(buff));
+            }
+        }
+      }
+    }
+  }
 }
 void XMLcontent(){
 
@@ -220,58 +285,66 @@ void XMLcontent(){
   }
 
 void setup() {
-  pinMode(5, OUTPUT);
-  pinMode(4, OUTPUT); 
   // put your setup code here, to run once:
   Serial.begin(115200);
   WiFi.begin(ssid,password);
   while(WiFi.status()!=WL_CONNECTED){
     delay(500);
-    Serial.print(".");
   }
+
   WiFi.mode(WIFI_STA);
-  
-  Serial.print(WiFi.localIP());
+  String ipadress = WiFi.localIP().toString();
+  ipadress += ".";
+  String sended = "";
+  int int_sended;
+  int i = 0;
+  int id_ip = 0;
+  while (ipadress[i]) {
+    if (ipadress[i] != '.'){
+        sended += ipadress[i];
+    }else{
+      int_sended = sended.toInt();
+      switch(id_ip){
+        case 0: ip_first = int_sended; break;
+        case 1: ip_second = int_sended; break;
+        case 2: ip_third = int_sended; break;
+        case 3: ip_fourth = int_sended; break;
+        } 
+      sended = ""; 
+      ++id_ip;
+    }
+    ++i;
+  }
   server.on("/",WebsiteContent);
   server.on("/xml",XMLcontent);
-        server.on("/fullpw", [](){
+  server.on("/fullpw", [](){
     server.send(200, "text/html", Website);
-    Serial.write(0);
+    uint8_t buff[2] = {1, (uint8_t)0};
+    Serial.write(buff, sizeof(buff));
   });
   server.on("/lowpw", [](){
   server.send(200, "text/html", Website);
-  Serial.write(1);
+  uint8_t buff[2] = {1, (uint8_t)1};
+  Serial.write(buff, sizeof(buff));
   });
   
   server.on("/pwoff", [](){
   server.send(200, "text/html", Website); 
-  Serial.write(2);
+  uint8_t buff[2] = {1, (uint8_t)2};
+  Serial.write(buff, sizeof(buff));
   });
-  
-  server.on("/saved", [](){
-  server.send(200, "text/html", Website); 
-  Serial.write(server.arg("hh").toInt());
-  });
-  
+  configTime(timezone, dst, "pool.ntp.org", "time.nist.gov");
+  while(!time(nullptr)){}
   server.begin();
 }
-void handleSave() {
-  if (server.arg("hh")!= ""){
-    Serial.println("Hours: " + server.arg("hh"));
-//    Serial.write(server.arg("hh"));
-  }
 
-  if (server.arg("mm")!= ""){
-    Serial.println("Minutes: " + server.arg("mm"));
-  }
-
-  if (server.arg("ss")!= ""){
-    Serial.println("Seconds: " + server.arg("ss"));
-  }
-
+void send_ip_data(int ip_con_id, int value){
+      uint8_t buff[4] = {(uint8_t)ip_con_id, (uint8_t)ip_con_id, (uint8_t)value, (uint8_t)value};
+       Serial.write(buff, sizeof(buff));
 }
 
 void loop() {
+  current_time += 1;
   server.handleClient();
   while (Serial.available()){
     int id = (int)Serial.read();
@@ -282,14 +355,11 @@ void loop() {
     }
   }
 
-  Serial.print(server.arg("date_hh"));
-  Serial.print(server.arg("hh"));
-
-  temp1 =" " + (String) data[0] + "." + (String) data[1] + "C ";
-  humidity =" " + (String) data[2] + "." + (String) data[3] + "% ";
-  pressure =" " + (String)data[4] + (String)data[5] + (String)data[6] + "." + (String)data[7]+ "Pa ";
-  temp2 =" " + (String)data[8] +  "." + (String)data[9] + "C ";
-  time1 = "Time: 20" + (String)data[16] + "/" + (String)data[15] + "/" + (String)data[14] + " ";
+  temp1 =" " + String(data[0]) + "." + String(data[1]) + "C ";
+  humidity =" " + String(data[2]) + "." + String(data[3]) + "% ";
+  pressure =" " + String(data[4]) + String(data[5]) + String(data[6]) + "." + String(data[7])+ "Pa ";
+  temp2 =" " + String(data[8]) +  "." + String(data[9]) + "C ";
+  time1 = "Time: 20" + String(data[16]) + "/" + String(data[15]) + "/" + String(data[14]) + " ";
   switch(data[13]){
     case 1: time1 += "Monday"; break;
     case 2: time1 += "Tuesday"; break;
@@ -300,7 +370,29 @@ void loop() {
     case 7: time1 += "Sunday"; break;
     default: time1 += "Unknown day!"; break;
     }
-    time1 += " " + (String)data[12] + ":" + (String)data[11] + ":" + (String)data[10];
-}  
-
-    
+    time1 += " " + String(data[12]) + ":" + String(data[11]) + ":" + String(data[10]);
+    delay(10);
+    if(current_time <= 50000){
+       time_t now = time(nullptr);
+       struct tm* p_tm = localtime(&now);
+       send_ip_data(2, p_tm->tm_year - 100);
+       delay(20);
+       send_ip_data(3, p_tm->tm_mon + 1);
+       delay(20);
+       send_ip_data(4, p_tm->tm_mday);
+       delay(20);
+       send_ip_data(5, p_tm->tm_hour - 1);
+       delay(20);
+       send_ip_data(6, p_tm->tm_min);
+       delay(20);
+       send_ip_data(7, p_tm->tm_sec);
+       delay(20);
+       send_ip_data(9, ip_first);
+       delay(20);
+       send_ip_data(10, ip_second);
+       delay(20);
+       send_ip_data(11, ip_third);
+       delay(20);
+       send_ip_data(12, ip_fourth);
+    }
+}
